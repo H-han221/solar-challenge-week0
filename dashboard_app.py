@@ -1,120 +1,90 @@
-# ===============================
-# Solar Data Dashboard (Final + Bonus)
-# Author: Hanan Bedru
-# ===============================
-
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import seaborn as sns
 
-# -------------------------------
-# PAGE CONFIGURATION
-# -------------------------------
-st.set_page_config(page_title="Solar Data Dashboard", page_icon="☀️", layout="wide")
+# ----------------------------
+# Page setup
+# ----------------------------
+st.set_page_config(
+    page_title="Solar Data Dashboard",
+    page_icon="🌞",
+    layout="wide"
+)
 
-st.title("☀️ Solar Data Dashboard")
-st.markdown("""
-Explore and compare **solar radiation data** for  
-**Benin**, **Togo**, and **Sierra Leone**.
-""")
+st.title("🌞 Solar Data Dashboard")
+st.markdown(
+    "Explore and compare **solar radiation data** for **Benin**, **Togo**, and **Sierra Leone**."
+)
 
-# -------------------------------
-# LOAD DATA FUNCTION
-# -------------------------------
+# ----------------------------
+# Load data
+# ----------------------------
 @st.cache_data
-def load_data(country):
-    path = f"data/{country}_clean.csv"
-    return pd.read_csv(path)
+def load_data():
+    data = {
+        "Benin": pd.read_csv("data/benin_clean.csv"),
+        "Togo": pd.read_csv("data/togo_clean.csv"),
+        "Sierra Leone": pd.read_csv("data/sierraleone_clean.csv")
+    }
+    return data
 
-# -------------------------------
-# COUNTRY TABS + SUMMARY TAB
-# -------------------------------
-tabs = st.tabs(["🇧🇯 Benin", "🇹🇬 Togo", "🇸🇱 Sierra Leone", "📈 Summary Comparison"])
+data = load_data()
 
-countries = ["benin", "togo", "sierra_leone"]
-data_dict = {}
+# ----------------------------
+# Tabs
+# ----------------------------
+tabs = st.tabs(["🇧🇯 Benin", "🇹🇬 Togo", "🇸🇱 Sierra Leone", "📊 Summary Comparison"])
 
-for i, country in enumerate(countries):
+# ----------------------------
+# Individual Country Tabs
+# ----------------------------
+for i, country in enumerate(["Benin", "Togo", "Sierra Leone"]):
     with tabs[i]:
-        st.subheader(f"📊 {country.capitalize()} Solar Data Overview")
+        st.subheader(f"Solar Radiation in {country}")
 
-        try:
-            df = load_data(country)
-            data_dict[country] = df  # store for summary tab
-        except FileNotFoundError:
-            st.error(f"❌ Missing file: data/{country}_clean.csv")
-            continue
+        df = data[country]
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
-        st.write("### Data Preview")
-        st.dataframe(df.head())
-
-        # Summary statistics
-        st.write("### Summary Statistics")
-        st.write(df.describe())
-
-        # Numeric columns
-        numeric_cols = df.select_dtypes(include="number").columns.tolist()
-        selected_col = st.selectbox(f"Select column to visualize ({country})", numeric_cols)
-
-        # Line chart
-        st.write(f"### {selected_col} Trend Over Time")
-        fig, ax = plt.subplots(figsize=(8, 4))
-        if 'Timestamp' in df.columns:
-            ax.plot(df['Timestamp'], df[selected_col], label=selected_col, color='orange')
-            ax.set_xlabel("Timestamp")
+        if df.empty:
+            st.warning(f"No data available for {country}. Check CSV file.")
         else:
-            ax.plot(df[selected_col], color='orange')
-            ax.set_xlabel("Index")
-        ax.set_ylabel(selected_col)
-        ax.set_title(f"{selected_col} over time in {country.capitalize()}")
-        st.pyplot(fig)
+            st.dataframe(df.head())
+            if "date" in df.columns and "solar_radiation" in df.columns:
+                fig, ax = plt.subplots()
+                ax.plot(df["date"], df["solar_radiation"], label=country)
+                ax.set_xlabel("Date")
+                ax.set_ylabel("Solar Radiation (kWh/m²)")
+                ax.legend()
+                st.pyplot(fig)
+            else:
+                st.error("Missing 'date' or 'solar_radiation' columns.")
 
-        # Correlation heatmap
-        st.write("### Correlation Heatmap")
-        fig, ax = plt.subplots(figsize=(6, 4))
-        sns.heatmap(df[numeric_cols].corr(), annot=True, cmap='coolwarm', ax=ax)
-        st.pyplot(fig)
-
-        # Distribution plots
-        st.write("### Distribution of Key Variables")
-        selected_cols = st.multiselect(f"Select variables for histogram ({country})", numeric_cols, default=numeric_cols[:2])
-        for col in selected_cols:
-            fig, ax = plt.subplots()
-            sns.histplot(df[col], kde=True, ax=ax)
-            ax.set_title(f"Distribution of {col}")
-            st.pyplot(fig)
-
-# -------------------------------
-# BONUS TAB: Summary Comparison
-# -------------------------------
+# ----------------------------
+# Summary Comparison Tab
+# ----------------------------
 with tabs[3]:
-    st.subheader("🌍 Country Comparison Summary")
+    st.subheader("📊 Solar Radiation Summary Comparison")
 
-    # Only run if all data are loaded
-    if all(c in data_dict for c in countries):
-        summary_df = pd.DataFrame({
-            "Country": [c.capitalize() for c in countries],
-            "Mean GHI": [data_dict[c]["GHI"].mean() for c in countries],
-            "Mean DNI": [data_dict[c]["DNI"].mean() for c in countries],
-            "Mean DHI": [data_dict[c]["DHI"].mean() for c in countries]
-        })
+    summary_data = []
+    for country, df in data.items():
+        if "solar_radiation" in df.columns:
+            summary_data.append({
+                "Country": country,
+                "Average Radiation": round(df["solar_radiation"].mean(), 2),
+                "Max Radiation": round(df["solar_radiation"].max(), 2),
+                "Min Radiation": round(df["solar_radiation"].min(), 2)
+            })
 
-        st.write("### Average Solar Irradiance by Country")
+    summary_df = pd.DataFrame(summary_data)
+
+    if not summary_df.empty:
         st.dataframe(summary_df)
 
-        # Bar plot comparison
-        st.write("### 📊 Comparison of Solar Metrics")
-        melted = summary_df.melt(id_vars="Country", var_name="Metric", value_name="Value")
-        fig, ax = plt.subplots(figsize=(8, 4))
-        sns.barplot(x="Country", y="Value", hue="Metric", data=melted, ax=ax)
-        ax.set_title("Comparison of GHI, DNI, DHI across Countries")
+        fig, ax = plt.subplots()
+        ax.bar(summary_df["Country"], summary_df["Average Radiation"], color=["#ffb703", "#219ebc", "#8ecae6"])
+        ax.set_ylabel("Average Solar Radiation (kWh/m²)")
+        ax.set_title("Average Solar Radiation by Country")
         st.pyplot(fig)
-
-        # Highlight best performer
-        best_country = summary_df.loc[summary_df["Mean GHI"].idxmax(), "Country"]
-        st.success(f"🏆 **{best_country}** has the highest average GHI (solar potential).")
     else:
-        st.warning("Please ensure all 3 cleaned datasets (benin, togo, sierra_leone) are in the data/ folder.")
-
-st.success("Dashboard loaded successfully!")
+        st.warning("No summary data available.")
